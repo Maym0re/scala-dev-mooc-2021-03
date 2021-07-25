@@ -1,6 +1,13 @@
 package module3
 
-import zio.ZIO
+import module3.zioConcurrency.printEffectRunningTime
+import zio.clock.{Clock, sleep}
+import zio.{ZIO}
+import zio.console.{Console, putStrLn}
+import zio.duration.durationInt
+import zio.random.{Random, nextIntBetween}
+
+import scala.io.StdIn
 import scala.language.postfixOps
 
 package object zio_homework {
@@ -10,14 +17,19 @@ package object zio_homework {
    * и печатать в когнсоль угадал или нет.
    */
 
-   lazy val guessProgram = ???
-
+  lazy val readInt: ZIO[Console, Throwable, Int] = ZIO.effect(StdIn.readLine()).flatMap(str => ZIO.effect(str.toInt))
+  lazy val win: ZIO[Random with Console, Throwable, Unit] = ZIO.effect(println("Ты угадал! Попробуй снова")) *> guessProgram
+  lazy val lose: ZIO[Random with Console, Throwable, Unit] = ZIO.effect(println("Не угадал. Попробуй снова")) *> guessProgram
+  lazy val guessProgram: ZIO[Random with Console, Throwable, Unit] = readInt.flatMap((value: Int) => for {
+    rand <- nextIntBetween(1, 4)
+    _ <- if (rand == value) win else lose
+  } yield ())
 
   /**
    * 2. реализовать функцию doWhile, которая будет выполнять эффект до тех пор, пока его значение в условии не даст true
    */
 
-  def doWhile[R, E, A](body: ZIO[R, E, A])(condition: A => Boolean): ZIO[R, E, A] = ???
+  def doWhile[R, E, A](body: ZIO[R, E, A])(condition: A => Boolean): ZIO[R, E, A] = body.repeatWhile(condition)
 
   /**
    * 3. Реализовать метод, который безопасно прочитает конфиг из файла, а в случае ошибки вернет дефолтный конфиг
@@ -25,8 +37,8 @@ package object zio_homework {
    * Используйте эффект "load" из пакета config
    */
 
-  def loadConfigOrDefault = ???
-
+  def loadConfigOrDefault: ZIO[Any, Throwable, config.AppConfig] =
+    config.load.onError(_ => ZIO.succeed(config.AppConfig("Default name", "Default url")))
 
   /**
    * 4. Следуйте инструкциям ниже для написания 2-х ZIO программ,
@@ -39,12 +51,12 @@ package object zio_homework {
    *  4.1 Создайте эффект, который будет возвращать случайеым образом выбранное число от 0 до 10 спустя 1 секунду
    *  Используйте сервис zio Random
    */
-  val eff = ???
+  lazy val eff: ZIO[Random with Clock, Nothing, Int] = sleep(1.second) *> nextIntBetween(0, 10)
 
   /**
    * 4.2 Создайте коллукцию из 10 выше описанных эффектов (eff)
    */
-   val effects = ???
+  lazy val effects: List[ZIO[Random with Clock, Nothing, Int]] = List.fill(10)(eff)
 
   /**
    * 4.3 Напишите программу которая вычислит сумму элементов коллекци "effects",
@@ -52,13 +64,21 @@ package object zio_homework {
    * можно использовать ф-цию printEffectRunningTime, которую мы разработали на занятиях
    */
 
-    val app = ???
+  lazy val app: ZIO[Console with Clock with Random, Nothing, Unit] = printEffectRunningTime(
+      effects.fold(ZIO.succeed(0))((acc, item) => {
+        acc.zipWith(item)((sum, el) => sum + el)
+      })
+    ).flatMap(result => putStrLn(s"Result: $result"))
 
   /**
    * 4.4 Усовершенствуйте программу 4.3 так, чтобы минимизировать время ее выполнения
    */
 
-    val appSpeedUp = ???
+    lazy val appSpeedUp: ZIO[Console with Clock with Random, Nothing, Unit] = printEffectRunningTime(
+      effects.fold(ZIO.succeed(0))((acc, item) => {
+        acc.zipWithPar(item)((sum, el) => sum + el)
+      })
+    ).flatMap(result => putStrLn(s"Result: $result"))
 
 
   /**
